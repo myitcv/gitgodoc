@@ -33,7 +33,7 @@ import (
 // TODO implement pruning of remote branches that no longer exist (we should be able to detect after each
 // push)
 
-type branchPorts map[string]int
+type branchPorts map[string]uint
 type branchLocks map[string]*sync.Mutex
 
 const (
@@ -50,6 +50,7 @@ var (
 	fRepo      = flag.String("repo", "", "git url from which to clone")
 	fPkg       = flag.String("pkg", "", "the package the repo represents")
 	fGoPath    = flag.String("gopath", "", "a relative GOPATH that will be used when running the godoc server (prepended with the repo dir)")
+	fPortStart = flag.Uint("port", 8080, "the port on which to serve; controlled godoc instances will be started on subsequent ports")
 )
 
 type gitLabPushWebook struct {
@@ -60,7 +61,7 @@ type server struct {
 	repo, serveFrom, pkg, refCopyDir string
 	gopath                           []string
 
-	nextPort int
+	nextPort uint
 
 	ports     atomic.Value
 	portsLock sync.Mutex
@@ -322,8 +323,7 @@ func newServer() *server {
 	// TODO validate *fPkg
 
 	s := &server{
-		// TODO make this configurable via a flag
-		nextPort: 8080,
+		nextPort: *fPortStart,
 		pkg:      *fPkg,
 		repo:     *fRepo,
 	}
@@ -367,7 +367,7 @@ func newServer() *server {
 	return s
 }
 
-func (s *server) getPort(branch string) int {
+func (s *server) getPort(branch string) uint {
 	m := s.ports.Load().(branchPorts)
 	port, gdRunning := m[branch]
 
@@ -527,7 +527,7 @@ func git(cwd string, args ...string) {
 	}
 }
 
-func (s *server) runGoDoc(branch string, port int) {
+func (s *server) runGoDoc(branch string, port uint) {
 	go func() {
 		gp := s.buildGoPath(branch)
 
