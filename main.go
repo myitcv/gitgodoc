@@ -215,9 +215,9 @@ func (s *server) serve() {
 	<body>
 		<h1><code>gitgodoc</code> server for <code>{{.Pkg}}</code></h1>
 		{{with .Branches}}
-			{{ range . }}{{ if eq . "master" }}<p><a href="/{{.}}">{{ . }}</a> (<a href="/{{.}}/pkg/{{$pkg}}">{{$pkg}}</a>)</p>{{ end }}{{ end }}
+			{{ range . }}{{ if eq . "master" }}<p><a href="/{{.}}">{{ . }}</a> (<a href="/{{.}}/pkg/{{$pkg}}/">{{$pkg}}</a>)</p>{{ end }}{{ end }}
 			<ul>
-			{{ range . }}{{ if ne . "master" }}<li><a href="/{{.}}">{{ . }}</a> (<a href="/{{.}}/pkg/{{$pkg}}">{{$pkg}}</a>)</li>{{ end }}{{ end }}
+			{{ range . }}{{ if ne . "master" }}<li><a href="/{{.}}">{{ . }}</a> (<a href="/{{.}}/pkg/{{$pkg}}/">{{$pkg}}</a>)</li>{{ end }}{{ end }}
 			</ul>
 		{{else}}
 			<div><strong>No branches known to godoc server</strong></div>
