@@ -53,8 +53,16 @@ var (
 	fPortStart = flag.Uint("port", 8080, "the port on which to serve; controlled godoc instances will be started on subsequent ports")
 )
 
-type gitLabPushWebook struct {
-	Ref string `json:"ref"`
+// TODO this should be split into separate types and the correct
+// type used based on the header sent from Gitlab
+type gitLabWebhook struct {
+	ObjectKind       string `json:"object_kind"`
+	Ref              string `json:"ref"`
+	ObjectAttributes struct {
+		MergeStatus  string `json:"merge_status"`
+		SourceBranch string `json:"source_branch"`
+		TargetBranch string `json:"target_branch"`
+	} `json:"object_attributes"`
 }
 
 type server struct {
@@ -127,28 +135,46 @@ func (s *server) serve() {
 						if err != nil {
 							fatalf("failed to read body of POST request")
 						}
-						var pHook gitLabPushWebook
+						var pHook gitLabWebhook
 						err = json.Unmarshal(body, &pHook)
 
 						if err != nil {
 							fatalf("could not decode Gitlab web")
 						}
 
-						ref := strings.Split(pHook.Ref, "/")
-						if len(ref) != 3 {
-							fatalf("did not understand format of branch: %v", pHook.Ref)
+						switch pHook.ObjectKind {
+						case "merge_request":
+							s.fetch(pHook.ObjectAttributes.SourceBranch)
+
+							infof("got a request to refresh branch %v in response to a merge request hook with target %v and merge status %v", pHook.ObjectAttributes.SourceBranch, pHook.ObjectAttributes.TargetBranch, pHook.ObjectAttributes.MergeStatus)
+
+						case "push":
+							ref := strings.Split(pHook.Ref, "/")
+							if len(ref) != 3 {
+								fatalf("did not understand format of branch: %v", pHook.Ref)
+							}
+
+							branch := ref[2]
+
+							infof("got a request to refresh branch %v in response to a push hook", branch)
+
+							s.fetch(branch)
+						default:
+							w.WriteHeader(http.StatusInternalServerError)
+
+							msg := fmt.Sprintf("Did not understand Gitlab refresh request; unknown object_kind: %v", pHook.ObjectKind)
+							infof(msg)
+							fmt.Fprintln(w, msg)
+
+							return
 						}
-
-						branch := ref[2]
-
-						infof("got a request to refresh branch %v", branch)
-
-						s.fetch(branch)
 
 						w.WriteHeader(http.StatusOK)
 						w.Write([]byte("OK"))
 
 						return
+					} else if len(vs) == 1 && vs[0] == "gitlab_merge_request" {
+
 					} else {
 						w.WriteHeader(http.StatusInternalServerError)
 
@@ -188,8 +214,9 @@ func (s *server) serve() {
 	<body>
 		<h1><code>gitgodoc</code> server for <code>{{.Pkg}}</code></h1>
 		{{with .Branches}}
+			{{ range . }}{{ if eq . "master" }}<p><a href="/{{.}}">{{ . }}</a></p>{{ end }}{{ end }}
 			<ul>
-			{{ range . }}<li><a href="/{{.}}">{{ . }}</a></li>{{ end }}
+			{{ range . }}{{ if ne . "master" }}<li><a href="/{{.}}">{{ . }}</a></li>{{ end }}{{ end }}
 			</ul>
 		{{else}}
 			<div><strong>No branches known to godoc server</strong></div>
