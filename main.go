@@ -43,7 +43,7 @@ const (
 )
 
 var (
-	validBranch = regexp.MustCompile("^[a-z0-9_]+$")
+	validBranch = regexp.MustCompile("^[a-z0-9_-]+$")
 	href        = regexp.MustCompile(`(href|src)="/("|[^/][^"]*")`)
 
 	fServeFrom = flag.String("serveFrom", "", "directory to use as a working directory")
