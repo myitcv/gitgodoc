@@ -1,3 +1,7 @@
+// Copyright (c) 2016 Paul Jolly <paul@myitcv.org.uk>, all rights reserved.
+// Use of this document is governed by a license found in the LICENSE document.
+
+// gitgodoc allows you to view `godoc` documentation for different branches of a Git repository
 package main
 
 import (
@@ -23,6 +27,8 @@ import (
 	"syscall"
 	"time"
 )
+
+// TODO make cross-platform
 
 // TODO implement pruning of remote branches that no longer exist (we should be able to detect after each
 // push)
@@ -111,6 +117,8 @@ func (s *server) serve() {
 		if r.URL.Path == "/" {
 			if r.Method == http.MethodPost {
 				if vs, ok := r.URL.Query()["refresh"]; ok {
+
+					// TODO support more than just gitlab
 					if len(vs) == 1 && vs[0] == "gitlab" {
 						// we need to parse the branch from the request
 
@@ -164,18 +172,20 @@ func (s *server) serve() {
 
 			tmpl := struct {
 				Branches []string
+				Pkg      string
 			}{
 				Branches: bs,
+				Pkg:      s.pkg,
 			}
 			tpl := `
 <!DOCTYPE html>
 <html>
 	<head>
 		<meta charset="UTF-8">
-		<title>modelogiq.com godoc server</title>
+		<title>gitgodoc server for {{.Pkg}}</title>
 	</head>
 	<body>
-		<h1>modelogiq.com godoc server</h1>
+		<h1><code>gitgodoc</code> server for <code>{{.Pkg}}</code></h1>
 		{{with .Branches}}
 			<ul>
 			{{ range . }}<li><a href="/{{.}}">{{ . }}</a></li>{{ end }}
@@ -274,6 +284,8 @@ func (s *server) serve() {
 				fatalf("could not relay body in response to proxy req to %v: %v", url, err)
 			}
 		} else {
+			// TODO shouldn't have to rewrite if we can get the godoc server to
+			// use a unique Path root
 			sc := bufio.NewScanner(resp.Body)
 
 			repl := "$1=\"/" + branch + "/$2"
