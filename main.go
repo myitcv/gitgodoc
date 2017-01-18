@@ -60,6 +60,7 @@ type gitLabWebhook struct {
 	ObjectKind       string `json:"object_kind"`
 	Ref              string `json:"ref"`
 	ObjectAttributes struct {
+		State        string `json:"state"`
 		MergeStatus  string `json:"merge_status"`
 		SourceBranch string `json:"source_branch"`
 		TargetBranch string `json:"target_branch"`
@@ -172,7 +173,7 @@ func (s *server) serve() {
 						case "merge_request":
 							s.fetch(pHook.ObjectAttributes.SourceBranch)
 
-							infof("got a request to refresh branch %v in response to a merge request hook with target %v and merge status %v", pHook.ObjectAttributes.SourceBranch, pHook.ObjectAttributes.TargetBranch, pHook.ObjectAttributes.MergeStatus)
+							infof("got a request to refresh branch %v in response to a merge request hook with target %v and state %v", pHook.ObjectAttributes.SourceBranch, pHook.ObjectAttributes.TargetBranch, pHook.ObjectAttributes.State)
 
 						case "push":
 							ref := strings.Split(pHook.Ref, "/")
@@ -354,8 +355,6 @@ func (s *server) serve() {
 				fatalf("error scanning response body: %v", err)
 			}
 		}
-
-		fmt.Fprintf(w, "OK")
 	})
 
 	url := fmt.Sprintf(":%v", s.nextPort)
