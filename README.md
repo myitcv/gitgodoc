@@ -63,7 +63,4 @@ own risk etc.
 
 ### TODO
 
-* Support more than just Gitlab webhooks
-* Make cross-platform; Linux-only now because of certain syscall attributes
-* Come up with a better approach than HTML re-writing of `href` and `src` attributes
-* Tidy up code and complete inline TODOs
+See the [TODO in the wiki](https://github.com/myitcv/gitgodoc/wiki/TODO)
