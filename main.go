@@ -82,8 +82,7 @@ type server struct {
 }
 
 func main() {
-	log.SetFlags(0)
-	log.SetPrefix("gitgodoc ")
+	log.SetPrefix("")
 
 	flag.Parse()
 
