@@ -6,6 +6,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -76,6 +77,8 @@ type server struct {
 
 	repos     atomic.Value
 	reposLock sync.Mutex
+
+	setupPhase bool
 }
 
 func main() {
@@ -87,6 +90,8 @@ func main() {
 	s := newServer()
 
 	s.setupRefCopy()
+	s.setupPhase = false
+
 	s.serve()
 }
 
@@ -103,8 +108,30 @@ func (s *server) setupRefCopy() {
 		git(s.serveFrom, "clone", s.repo, s.refCopyDir)
 		git(s.refCopyDir, "checkout", "-f", "origin/master")
 	} else {
-		git(s.refCopyDir, "fetch")
+		git(s.refCopyDir, "fetch", "-p")
 		git(s.refCopyDir, "checkout", "-f", "origin/master")
+	}
+
+	// TODO make this configurable/better
+
+	remotes := git(s.refCopyDir, "branch", "-r")
+
+	sc := bufio.NewScanner(bytes.NewBuffer(remotes))
+
+	for sc.Scan() {
+		line := strings.Fields(sc.Text())
+		branch := filepath.Base(line[0])
+
+		// special case
+		if branch == "HEAD" {
+			continue
+		}
+
+		s.setup(branch, true)
+	}
+
+	if err := sc.Err(); err != nil {
+		fatalf("error scanning output of remote branch check: %v\n%v", err, string(remotes))
 	}
 }
 
@@ -354,6 +381,8 @@ func newServer() *server {
 		nextPort: *fPortStart,
 		pkg:      *fPkg,
 		repo:     *fRepo,
+
+		setupPhase: true,
 	}
 
 	serveFrom, err := filepath.Abs(*fServeFrom)
@@ -449,8 +478,10 @@ func (s *server) setup(branch string, cloneIfMissing bool) bool {
 		return true
 	}
 
-	s.reposLock.Lock()
-	defer s.reposLock.Unlock()
+	if !s.setupPhase {
+		s.reposLock.Lock()
+		defer s.reposLock.Unlock()
+	}
 
 	//check again now we are criticl
 	m = s.repos.Load().(branchLocks)
@@ -479,7 +510,9 @@ func (s *server) setup(branch string, cloneIfMissing bool) bool {
 	}
 
 	// keep the refCopy fresh
-	git(s.refCopyDir, "fetch")
+	if !s.setupPhase {
+		git(s.refCopyDir, "fetch")
+	}
 
 	// ensure the path to the target exists
 	p := filepath.Dir(ct)
@@ -543,7 +576,7 @@ func (s *server) buildGoPath(branch string) string {
 	return res
 }
 
-func git(cwd string, args ...string) {
+func git(cwd string, args ...string) []byte {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = cwd
 
@@ -553,6 +586,10 @@ func git(cwd string, args ...string) {
 	if err != nil {
 		fatalf("failed to run command: git %v: %v\n%v", strings.Join(args, " "), err, string(out))
 	}
+
+	infof("done")
+
+	return out
 }
 
 func (s *server) runGoDoc(branch string, port uint) {
