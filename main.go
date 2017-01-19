@@ -38,14 +38,24 @@ type branchPorts map[string]uint
 type branchLocks map[string]*sync.Mutex
 
 const (
-	refCopy = "@refcopy"
-
-	debug = false
+	refCopy               = "@refcopy"
+	debug                 = false
+	jqueryReplacementFile = `<script src="/__static/jquery-2.0.3.min.js"></script>`
+	additionalScriptTags  = `<script src="$1/godocs.js"></script>
+ 						 	<script src="/__static/bootstrap.min.js"></script>
+							<script src="/__static/site.js"></script>`
+	additionalStylesheets = `<link type="text/css" rel="stylesheet" href="$1/style.css">
+						  	 <link type="text/css" rel="stylesheet" href="/__static/bootstrap.min.css">
+							 <link type="text/css" rel="stylesheet" href="/__static/site.css">`
 )
 
 var (
-	validBranch = regexp.MustCompile("^[a-z0-9_-]+$")
-	href        = regexp.MustCompile(`(href|src)="/("|[^/][^"]*")`)
+	validBranch    = regexp.MustCompile("^[a-z0-9_-]+$")
+	href           = regexp.MustCompile(`(href|src)="/("|[^/][^"]*")`)
+	footerTag      = regexp.MustCompile(`<div id="footer">`)
+	godocjs        = regexp.MustCompile(`<script type="text\/javascript" src="([\/a-z0-9_-]+)\/godocs\.js"><\/script>`)
+	jqueryFilename = regexp.MustCompile(`<script type="text\/javascript" src="([\/a-z0-9_-]+)\/jquery\.js"><\/script>`)
+	stylecss       = regexp.MustCompile(`<link type="text\/css" rel="stylesheet" href="([\/a-z0-9_-]+)\/style\.css">`)
 
 	fServeFrom = flag.String("serveFrom", "", "directory to use as a working directory")
 	fRepo      = flag.String("repo", "", "git url from which to clone")
@@ -144,6 +154,8 @@ func (s *server) serve() {
 	}
 	client := &http.Client{Transport: tr}
 
+	http.HandleFunc("/__static/", handleStaticFileRequests)
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 
 		if !path.IsAbs(r.URL.Path) {
@@ -151,114 +163,7 @@ func (s *server) serve() {
 		}
 
 		if r.URL.Path == "/" {
-			if r.Method == http.MethodPost {
-				if vs, ok := r.URL.Query()["refresh"]; ok {
-
-					// TODO support more than just gitlab
-					if len(vs) == 1 && vs[0] == "gitlab" {
-						// we need to parse the branch from the request
-
-						body, err := ioutil.ReadAll(r.Body)
-						if err != nil {
-							fatalf("failed to read body of POST request")
-						}
-						var pHook gitLabWebhook
-						err = json.Unmarshal(body, &pHook)
-
-						if err != nil {
-							fatalf("could not decode Gitlab web")
-						}
-
-						switch pHook.ObjectKind {
-						case "merge_request":
-							s.fetch(pHook.ObjectAttributes.SourceBranch)
-
-							infof("got a request to refresh branch %v in response to a merge request hook with target %v and state %v", pHook.ObjectAttributes.SourceBranch, pHook.ObjectAttributes.TargetBranch, pHook.ObjectAttributes.State)
-
-						case "push":
-							ref := strings.Split(pHook.Ref, "/")
-							if len(ref) != 3 {
-								fatalf("did not understand format of branch: %v", pHook.Ref)
-							}
-
-							branch := ref[2]
-
-							infof("got a request to refresh branch %v in response to a push hook", branch)
-
-							s.fetch(branch)
-						default:
-							w.WriteHeader(http.StatusInternalServerError)
-
-							msg := fmt.Sprintf("Did not understand Gitlab refresh request; unknown object_kind: %v", pHook.ObjectKind)
-							infof(msg)
-							fmt.Fprintln(w, msg)
-
-							return
-						}
-
-						w.WriteHeader(http.StatusOK)
-						w.Write([]byte("OK\n"))
-
-						return
-					} else if len(vs) == 1 && vs[0] == "gitlab_merge_request" {
-
-					} else {
-						w.WriteHeader(http.StatusInternalServerError)
-
-						msg := fmt.Sprintf("Did not understand refresh request: %v", r.URL)
-						infof(msg)
-						fmt.Fprintln(w, msg)
-
-						return
-					}
-				}
-			}
-
-			// we should serve a simple page of links to existing branches
-			w.WriteHeader(http.StatusOK)
-			var bs []string
-			m := s.repos.Load().(branchLocks)
-			for k := range m {
-				bs = append(bs, k)
-			}
-
-			sort.Strings(bs)
-
-			tmpl := struct {
-				Branches []string
-				Pkg      string
-			}{
-				Branches: bs,
-				Pkg:      s.pkg,
-			}
-			tpl := `
-{{ $pkg := .Pkg }}
-<!DOCTYPE html>
-<html>
-	<head>
-		<meta charset="UTF-8">
-		<title>gitgodoc server for {{.Pkg}}</title>
-	</head>
-	<body>
-		<h1><code>gitgodoc</code> server for <code>{{.Pkg}}</code></h1>
-		{{with .Branches}}
-			{{ range . }}{{ if eq . "master" }}<p><a href="/{{.}}">{{ . }}</a> (<a href="/{{.}}/pkg/{{$pkg}}/">{{$pkg}}</a>)</p>{{ end }}{{ end }}
-			<ul>
-			{{ range . }}{{ if ne . "master" }}<li><a href="/{{.}}">{{ . }}</a> (<a href="/{{.}}/pkg/{{$pkg}}/">{{$pkg}}</a>)</li>{{ end }}{{ end }}
-			</ul>
-		{{else}}
-			<div><strong>No branches known to godoc server</strong></div>
-		{{end}}
-	</body>
-</html>`
-
-			t, err := template.New("webpage").Parse(tpl)
-			if err != nil {
-				fatalf("could not parse branch browser template: %v", err)
-			}
-
-			t.Execute(w, tmpl)
-
+			handleRootRequest(w, r, s)
 			return
 		}
 
@@ -272,7 +177,6 @@ func (s *server) serve() {
 			// now we need to redirect to the same URL but with a branch
 			newUrl := *r.URL
 			newUrl.Path = "/" + path.Join(branch, actUrl)
-
 			http.Redirect(w, r, newUrl.String(), http.StatusFound)
 
 			return
@@ -347,8 +251,31 @@ func (s *server) serve() {
 			repl := "$1=\"/" + branch + "/$2"
 
 			for sc.Scan() {
-				nl := href.ReplaceAllString(sc.Text(), repl)
-				fmt.Fprintln(w, nl)
+				text := sc.Text()
+				line := href.ReplaceAllString(text, repl)
+
+				onlyText := strings.TrimSpace(line) // trimming space since they may interfere with hasPrefix or hasSuffix function
+
+				switch {
+				case matchesStylesheets(onlyText):
+					// append additional stylesheets
+					line = stylecss.ReplaceAllString(line, additionalStylesheets)
+
+				case matchesScriptTags(onlyText):
+					// append script tags after the last script tag
+					line = godocjs.ReplaceAllString(line, additionalScriptTags)
+
+				case matchesFooterTag(onlyText):
+					// append the modal divs after the footer
+					modalHtmlString := staticFileMap["modalHTMLFragment"]
+					line = footerTag.ReplaceAllString(line, modalHtmlString)
+
+				case matchesJqueryFile(onlyText):
+					// replace jquery with newer version
+					line = jqueryFilename.ReplaceAllString(line, jqueryReplacementFile)
+				}
+
+				fmt.Fprintln(w, line)
 			}
 
 			if err := sc.Err(); err != nil {
@@ -454,7 +381,7 @@ func (s *server) getPort(branch string) uint {
 	s.runGoDoc(branch, port)
 
 	// TODO this is pretty gross
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(2500 * time.Millisecond)
 
 	// now "signal" we are done setting up this server
 
@@ -481,7 +408,7 @@ func (s *server) setup(branch string, cloneIfMissing bool) bool {
 		defer s.reposLock.Unlock()
 	}
 
-	//check again now we are criticl
+	//check again now we are critical
 	m = s.repos.Load().(branchLocks)
 	_, ok = m[branch]
 
@@ -628,4 +555,137 @@ func debugf(format string, args ...interface{}) {
 
 func fatalf(format string, args ...interface{}) {
 	log.Fatalf(format, args...)
+}
+
+func handleStaticFileRequests(res http.ResponseWriter, req *http.Request) {
+	debugf("serving static content for: %v", req.URL.Path)
+
+	switch req.URL.String() {
+	case "/__static/jquery-2.0.3.min.js":
+		content := staticFileMap["jquery-2.0.3.min.js"]
+		res.Header().Add("Content-Type", "application/javascript")
+		res.Write([]byte(content))
+	case "/__static/bootstrap.min.js":
+		content := staticFileMap["bootstrap.min.js"]
+		res.Header().Add("Content-Type", "application/javascript")
+		res.Write([]byte(content))
+	case "/__static/bootstrap.min.css":
+		content := staticFileMap["bootstrap.min.css"]
+		res.Header().Add("Content-Type", "text/css; charset=utf-8")
+		res.Write([]byte(content))
+	case "/__static/site.js":
+		content := staticFileMap["site.js"]
+		res.Header().Add("Content-Type", "application/javascript")
+		res.Write([]byte(content))
+	case "/__static/site.css":
+		content := staticFileMap["site.css"]
+		res.Header().Add("Content-Type", "text/css; charset=utf-8")
+		res.Write([]byte(content))
+	}
+}
+
+func handleRootRequest(res http.ResponseWriter, req *http.Request, s *server) {
+	if req.Method == http.MethodPost {
+		if vs, ok := req.URL.Query()["refresh"]; ok {
+
+			// TODO support more than just gitlab
+			if len(vs) == 1 && vs[0] == "gitlab" {
+				// we need to parse the branch from the request
+
+				body, err := ioutil.ReadAll(req.Body)
+				if err != nil {
+					fatalf("failed to read body of POST request")
+				}
+				var pHook gitLabWebhook
+				err = json.Unmarshal(body, &pHook)
+
+				if err != nil {
+					fatalf("could not decode Gitlab web")
+				}
+
+				switch pHook.ObjectKind {
+				case "merge_request":
+					s.fetch(pHook.ObjectAttributes.SourceBranch)
+
+					infof("got a request to refresh branch %v in response to a merge request hook with target %v and state %v", pHook.ObjectAttributes.SourceBranch, pHook.ObjectAttributes.TargetBranch, pHook.ObjectAttributes.State)
+
+				case "push":
+					ref := strings.Split(pHook.Ref, "/")
+					if len(ref) != 3 {
+						fatalf("did not understand format of branch: %v", pHook.Ref)
+					}
+
+					branch := ref[2]
+
+					infof("got a request to refresh branch %v in response to a push hook", branch)
+
+					s.fetch(branch)
+				default:
+					res.WriteHeader(http.StatusInternalServerError)
+
+					msg := fmt.Sprintf("Did not understand Gitlab refresh request; unknown object_kind: %v", pHook.ObjectKind)
+					infof(msg)
+					fmt.Fprintln(res, msg)
+
+					return
+				}
+
+				res.WriteHeader(http.StatusOK)
+				res.Write([]byte("OK\n"))
+
+				return
+			} else if len(vs) == 1 && vs[0] == "gitlab_merge_request" {
+
+			} else {
+				res.WriteHeader(http.StatusInternalServerError)
+
+				msg := fmt.Sprintf("Did not understand refresh request: %v", req.URL)
+				infof(msg)
+				fmt.Fprintln(res, msg)
+
+				return
+			}
+		}
+	}
+
+	// we should serve a simple page of links to existing branches
+	res.WriteHeader(http.StatusOK)
+	var bs []string
+	m := s.repos.Load().(branchLocks)
+	for k := range m {
+		bs = append(bs, k)
+	}
+
+	sort.Strings(bs)
+
+	tmpl := struct {
+		Branches []string
+		Pkg      string
+	}{
+		Branches: bs,
+		Pkg:      s.pkg,
+	}
+
+	t, err := template.New("webpage").Parse(homePageTemplate)
+	if err != nil {
+		fatalf("could not parse branch browser template: %v", err)
+	}
+
+	t.Execute(res, tmpl)
+}
+
+func matchesStylesheets(text string) bool {
+	return strings.HasPrefix(text, `<link type="text/css" rel="stylesheet" href="`) && strings.HasSuffix(text, `style.css">`)
+}
+
+func matchesScriptTags(text string) bool {
+	return strings.HasPrefix(text, `<script type="text/javascript" src="`) && strings.HasSuffix(text, `/godocs.js"></script>`)
+}
+
+func matchesFooterTag(text string) bool {
+	return strings.Contains(text, `<div id="footer">`)
+}
+
+func matchesJqueryFile(text string) bool {
+	return strings.HasPrefix(text, `<script type="text/javascript" src="`) && strings.HasSuffix(text, `/jquery.js"></script>`)
 }
