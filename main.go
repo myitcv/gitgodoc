@@ -382,7 +382,27 @@ func (s *server) getPort(branch string) uint {
 	s.runGoDoc(branch, port)
 
 	// TODO this is pretty gross
-	time.Sleep(2500 * time.Millisecond)
+	backoff := 50 * time.Millisecond
+	attempt := 1
+	for {
+		resp, err := http.Get(fmt.Sprintf("http://localhost:%v", port))
+
+		if err == nil {
+			if resp.StatusCode == 200 {
+				break
+			}
+		}
+
+		attempt++
+
+		if attempt == 10 {
+			fatalf("could not connect to godoc instance on branch %v (port %v) after 10 attempts", branch, port)
+		}
+
+		infof("could not connect to godoc instance on branch %v (port %v); retrying attempt %v; will sleep for %v", branch, port, attempt, backoff)
+		time.Sleep(backoff)
+		backoff *= 2
+	}
 
 	// now "signal" we are done setting up this server
 
@@ -519,34 +539,34 @@ func git(cwd string, args ...string) []byte {
 }
 
 func (s *server) runGoDoc(branch string, port uint) {
-	go func() {
-		gp := s.buildGoPath(branch)
+	gp := s.buildGoPath(branch)
 
+	env := []string{
+		"GOROOT=" + runtime.GOROOT(),
+		"GOPATH=" + gp,
+	}
+	cmd := exec.Command("go", "install", "golang.org/x/tools/cmd/godoc")
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		fatalf("could not go install golang.org/x/tools/cmd/godoc: %v\n%v", err, string(out))
+	}
+
+	ctxt := build.Default
+	ctxt.GOPATH = gp
+
+	pkg, err := ctxt.Import("golang.org/x/tools/cmd/godoc", "", 0)
+	if err != nil {
+		fatalf("could not go build details fo golang.org/x/tools/cmd/godoc: %v", err)
+	}
+
+	gdp := filepath.Join(pkg.BinDir, "godoc")
+
+	// run the godoc instance
+	go func() {
 		attrs := &syscall.SysProcAttr{
 			Pdeathsig: syscall.SIGTERM,
 		}
-
-		env := []string{
-			"GOROOT=" + runtime.GOROOT(),
-			"GOPATH=" + gp,
-		}
-
-		inst := exec.Command("go", "install", "golang.org/x/tools/cmd/godoc")
-		inst.Env = env
-		out, err := inst.CombinedOutput()
-		if err != nil {
-			fatalf("could not go install golang.org/x/tools/cmd/godoc: %v\n%v", err, string(out))
-		}
-
-		ctxt := build.Default
-		ctxt.GOPATH = gp
-
-		pkg, err := ctxt.Import("golang.org/x/tools/cmd/godoc", "", 0)
-		if err != nil {
-			fatalf("could not go build details fo golang.org/x/tools/cmd/godoc: %v", err)
-		}
-
-		gdp := filepath.Join(pkg.BinDir, "godoc")
 
 		portStr := fmt.Sprintf(":%v", port)
 		cmd := exec.Command(gdp, "-http", portStr)
