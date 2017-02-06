@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go/build"
 	"html/template"
 	"io"
 	"io/ioutil"
@@ -529,16 +530,34 @@ func (s *server) runGoDoc(branch string, port uint) {
 			"GOROOT=" + runtime.GOROOT(),
 			"GOPATH=" + gp,
 		}
+
+		inst := exec.Command("go", "install", "golang.org/x/tools/cmd/godoc")
+		inst.Env = env
+		out, err := inst.CombinedOutput()
+		if err != nil {
+			fatalf("could not go install golang.org/x/tools/cmd/godoc: %v\n%v", err, string(out))
+		}
+
+		ctxt := build.Default
+		ctxt.GOPATH = gp
+
+		pkg, err := ctxt.Import("golang.org/x/tools/cmd/godoc", "", 0)
+		if err != nil {
+			fatalf("could not go build details fo golang.org/x/tools/cmd/godoc: %v", err)
+		}
+
+		gdp := filepath.Join(pkg.BinDir, "godoc")
+
 		portStr := fmt.Sprintf(":%v", port)
-		cmd := exec.Command("godoc", "-http", portStr)
+		cmd := exec.Command(gdp, "-http", portStr)
 		cmd.Env = env
 		cmd.SysProcAttr = attrs
 
-		infof("starting godoc server on port %v with env %v", portStr, env)
+		infof("starting %v server on port %v with env %v", gdp, portStr, env)
 
-		out, err := cmd.CombinedOutput()
+		out, err = cmd.CombinedOutput()
 		if err != nil {
-			fatalf("godoc -http %v failed: %v\n%v", portStr, err, string(out))
+			fatalf("%v -http %v failed: %v\n%v", gdp, portStr, err, string(out))
 		}
 	}()
 }
