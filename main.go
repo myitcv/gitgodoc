@@ -208,6 +208,7 @@ func (s *server) serve() {
 		ourl.Scheme = scheme
 		ourl.Host = fmt.Sprintf("%v:%v", host, port)
 		ourl.Path = actUrl
+		ourl.RawQuery = "m=all"
 
 		url := ourl.String()
 
