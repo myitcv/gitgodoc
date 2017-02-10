@@ -204,7 +204,12 @@ func (s *server) serve() {
 			hostParts := strings.Split(r.URL.Host, ":")
 			host = hostParts[0]
 		}
-		url := fmt.Sprintf("%v://%v:%v/%v", scheme, host, port, actUrl)
+		ourl := *r.URL
+		ourl.Scheme = scheme
+		ourl.Host = fmt.Sprintf("%v:%v", host, port)
+		ourl.Path = actUrl
+
+		url := ourl.String()
 
 		debugf("making onward request to %v", url)
 
