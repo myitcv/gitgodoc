@@ -208,7 +208,7 @@ func (s *server) serve() {
 		ourl.Scheme = scheme
 		ourl.Host = fmt.Sprintf("%v:%v", host, port)
 		ourl.Path = actUrl
-		ourl.RawQuery = "m=all"
+		// ourl.RawQuery = "m=all"
 
 		url := ourl.String()
 
@@ -264,6 +264,11 @@ func (s *server) serve() {
 				onlyText := strings.TrimSpace(line) // trimming space since they may interfere with hasPrefix or hasSuffix function
 
 				switch {
+				case matchesBodyStart(line):
+					line = `<body>
+					<div style="position:fixed; top:0;right:0;"><a href="?m=all">Show All</a></div>
+					`
+
 				case matchesStylesheets(onlyText):
 					// append additional stylesheets
 					line = stylecss.ReplaceAllString(line, additionalStylesheets)
@@ -717,6 +722,10 @@ func handleRootRequest(res http.ResponseWriter, req *http.Request, s *server) {
 	}
 
 	t.Execute(res, tmpl)
+}
+
+func matchesBodyStart(text string) bool {
+	return strings.ToLower(text) == "<body>"
 }
 
 func matchesStylesheets(text string) bool {
