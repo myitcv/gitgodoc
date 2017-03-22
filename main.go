@@ -51,7 +51,7 @@ const (
 )
 
 var (
-	validBranch    = regexp.MustCompile("^[a-z0-9_-]+$")
+	validBranch    = regexp.MustCompile("^[a-zA-Z0-9_-]+$")
 	href           = regexp.MustCompile(`(href|src)="/("|[^/][^"]*")`)
 	footerTag      = regexp.MustCompile(`<div id="footer">`)
 	godocjs        = regexp.MustCompile(`<script type="text\/javascript" src="([\/a-z0-9_-]+)\/godocs\.js"><\/script>`)
@@ -158,6 +158,8 @@ func (s *server) serve() {
 	http.HandleFunc("/__static/", handleStaticFileRequests)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+
+		debugf("%v\n", r.URL)
 
 		if !path.IsAbs(r.URL.Path) {
 			fatalf("expected absolute URL path, got %v", r.URL.Path)
