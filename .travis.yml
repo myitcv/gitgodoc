@@ -5,6 +5,8 @@ go:
 
 install: true
 
+go_import_path: myitcv.io/gitgodoc
+
 script:
   - ./_scripts/run_tests.sh
   - ./_scripts/check_git_is_clean.sh

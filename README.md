@@ -7,29 +7,29 @@ that sits in front of multiple `godoc` instances (that `gitgodoc` controls) and 
 are interested in.  This is most useful in situations where you either have a private repository or a vendored copy of packages
 you depend on.
 
-For example consider the repo https://github.com/myitcv/immutable. Here we vendor a copy of
-`github.com/myitcv/gogenerate` into the `_vendor` directory. This `_vendor` directory is
-then prepended to our `GOPATH` when working with the `github.com/myitcv/immutable` package
-(so our `GOPATH` is effectively `/path/to/gopath/src/github.com/myitcv/immutable/_vendor:/path/to/gopath`)
+For example consider the package myitcv.io/immutable. Here we vendor a copy of
+`myitcv.io/gogenerate` into the `_vendor` directory. This `_vendor` directory is
+then prepended to our `GOPATH` when working with the `myitcv.io/immutable` package
+(so our `GOPATH` is effectively `/path/to/gopath/src/myitcv.io/immutable/_vendor:/path/to/gopath`)
 
 If we run `gitgodoc` on the https://github.com/myitcv/immutable repo:
 
 ```bash
 gitgodoc -serveFrom /tmp/immutable -repo https://github.com/myitcv/immutable.git \
-  -pkg github.com/myitcv/immutable -gopath src/github.com/myitcv/immutable/_vendor:
+  -pkg myitcv.io/immutable -gopath src/myitcv.io/immutable/_vendor:
 ```
 
 we can do things like:
 
 ```bash
-# the documentation for github.com/myitcv/immutable on the master branch
-http://localhost:8080/master/pkg/github.com/myitcv/immutable
+# the documentation for myitcv.io/immutable on the master branch
+http://localhost:8080/master/pkg/myitcv.io/immutable
 
-# the documentation for the vendored github.com/myitcv/gogenerate on the master branch
-http://localhost:8080/master/pkg/github.com/myitcv/gogenerate
+# the documentation for the vendored myitcv.io/gogenerate on the master branch
+http://localhost:8080/master/pkg/myitcv.io/gogenerate
 
-# the documentation for github.com/myitcv/immutable on the feature branch
-http://localhost:8080/feature/pkg/github.com/myitcv/immutable
+# the documentation for myitcv.io/immutable on the feature branch
+http://localhost:8080/feature/pkg/myitcv.io/immutable
 
 ...
 
